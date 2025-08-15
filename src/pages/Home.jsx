@@ -10,6 +10,7 @@ import SubScript from '@tiptap/extension-subscript';
 const content =
     ''
 export default function Home() {
+
   const editor = useEditor({
     extensions: [
       StarterKit,
