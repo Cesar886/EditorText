@@ -14,7 +14,7 @@ export default function App() {
       setError('');
       navigate('/home'); // coincide con la Route
     } else {
-      setError('Usuario o contraseña incorrectos');
+      setError('Usuario: user, password: 123456');
     }
   };
 
@@ -26,9 +26,9 @@ export default function App() {
 
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
-          <TextInput label="Username" placeholder="Enter your username" required radius="md"
+          <TextInput label="Username" placeholder="user" required radius="md"
             value={username} onChange={(e) => setUsername(e.target.value)} />
-          <PasswordInput label="Password" placeholder="Enter your password" required radius="md"
+          <PasswordInput label="Password" placeholder="123456" required radius="md"
             value={password} onChange={(e) => setPassword(e.target.value)} />
           {error && <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>}
           <Button type="submit" fullWidth radius="md" size="md" style={{ backgroundColor: '#0E4C84' }}>
