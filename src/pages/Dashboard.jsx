@@ -1,34 +1,31 @@
-// Dashboard.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActionIcon, Button, Group, Paper, Table, Text, TextInput, Title, Tooltip,
+  ActionIcon, Button, Group, Paper, Table, Text, TextInput, Title, Tooltip, Menu, Divider, Badge,
 } from '@mantine/core';
+import { IconPlus, IconSearch, IconPencil, IconTrash, IconLogout, IconUser } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { IconPlus, IconSearch, IconPencil, IconTrash } from '@tabler/icons-react';
+import { deleteDoc, getDocs } from '../lib/storage.js';
+import { getSession, clearSession } from '../lib/storage.js';
 
 const LS_KEY = 'docs';
-
-function readDocs() {
-  const raw = localStorage.getItem(LS_KEY);
-  try { return Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : []; } catch { return []; }
-}
-function writeDocs(docs) { localStorage.setItem(LS_KEY, JSON.stringify(docs)); }
-function fmt(dt) { return dt ? new Date(dt).toLocaleString() : '—'; }
+const fmt = (dt) => (dt ? new Date(dt).toLocaleString() : '—');
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const session = getSession();
   const [docs, setDocs] = useState([]);
   const [q, setQ] = useState('');
+  const [confirmFor, setConfirmFor] = useState(null);
 
-  // carga inicial + sync con cambios externos
+  // carga + sync por cambios externos
   useEffect(() => {
-    setDocs(readDocs());
-    const onStorage = (e) => { if (e.key === LS_KEY) setDocs(readDocs()); };
+    setDocs(getDocs());
+    const onStorage = (e) => { if (e.key === LS_KEY) setDocs(getDocs()); };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // ordenar por actualizado desc y filtrar por query
+  // ordenar por actualizado desc y filtrar
   const view = useMemo(() => {
     const data = [...docs].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     if (!q.trim()) return data;
@@ -39,48 +36,55 @@ export default function Dashboard() {
     );
   }, [docs, q]);
 
-  const nuevo = () => {
-    const id = crypto.randomUUID();
-    const ahora = new Date().toISOString();
-    const baseTitulo = 'Documento sin título';
-    // evitar colisiones del nombre visible
-    let titulo = baseTitulo;
-    const existing = new Set(docs.map(d => d.titulo));
-    for (let i = 2; existing.has(titulo); i++) titulo = `${baseTitulo} ${i}`;
+  const nuevo = () => navigate('/home'); // Home crea id si no llega por query
+  const editar = (id) => navigate(`/home?id=${id}`);
+  const solicitarEliminar = (id) => setConfirmFor(id);
 
-    const nuevos = [
-      ...docs,
-      { id, titulo, html: '', createdAt: ahora, updatedAt: ahora },
-    ];
-    writeDocs(nuevos);
-    setDocs(nuevos);
-    navigate(`/home?id=${id}`); // el editor debe leer ?id
+  const confirmarEliminar = () => {
+    if (!confirmFor) return;
+    deleteDoc(confirmFor);
+    setDocs(getDocs());
+    setConfirmFor(null);
   };
 
-  const editar = (id) => navigate(`/home?id=${id}`);
-
-  const eliminar = (id) => {
-    if (!confirm('¿Eliminar este documento?')) return;
-    const nuevos = docs.filter(d => d.id !== id);
-    writeDocs(nuevos);
-    setDocs(nuevos);
+  const logout = () => {
+    clearSession();
+    navigate('/login', { replace: true });
   };
 
   return (
     <Paper p="lg" radius="lg" withBorder style={{ maxWidth: 1000, margin: '40px auto' }}>
       <Group justify="space-between" mb="md">
-        <Title order={2}>Documentos</Title>
+        <Group gap="xs">
+          <Title order={2}>Documentos</Title>
+          <Badge variant="light">Total {docs.length}</Badge>
+        </Group>
         <Group gap="sm">
           <TextInput
             placeholder="Buscar por título o contenido"
-            leftSection={<IconSearch size={16} />}
+            leftSection={<IconSearch size={16} aria-hidden="true" />}
             value={q}
             onChange={(e) => setQ(e.currentTarget.value)}
             w={280}
+            aria-label="Buscar documentos"
           />
           <Button leftSection={<IconPlus size={16} />} onClick={nuevo}>
             Nuevo documento
           </Button>
+
+          <Menu withinPortal position="bottom-end" shadow="md">
+            <Menu.Target>
+              <Button variant="light" leftSection={<IconUser size={16} />}>
+                {session?.username || 'Usuario'}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>Cuenta</Menu.Label>
+              <Menu.Item leftSection={<IconLogout size={16} />} onClick={logout}>
+                Cerrar sesión
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Group>
       </Group>
 
@@ -104,20 +108,18 @@ export default function Dashboard() {
           <Table.Tbody>
             {view.map((d) => (
               <Table.Tr key={d.id}>
-                <Table.Td>
-                  <Text fw={500}>{d.titulo || 'Sin título'}</Text>
-                </Table.Td>
+                <Table.Td><Text fw={500}>{d.titulo || 'Sin título'}</Text></Table.Td>
                 <Table.Td>{fmt(d.createdAt)}</Table.Td>
                 <Table.Td>{fmt(d.updatedAt)}</Table.Td>
                 <Table.Td>
                   <Group gap="xs">
                     <Tooltip label="Editar">
-                      <ActionIcon variant="light" onClick={() => editar(d.id)}>
+                      <ActionIcon variant="light" onClick={() => editar(d.id)} aria-label="Editar documento">
                         <IconPencil size={16} />
                       </ActionIcon>
                     </Tooltip>
                     <Tooltip label="Eliminar">
-                      <ActionIcon color="red" variant="light" onClick={() => eliminar(d.id)}>
+                      <ActionIcon color="red" variant="light" onClick={() => solicitarEliminar(d.id)} aria-label="Eliminar documento">
                         <IconTrash size={16} />
                       </ActionIcon>
                     </Tooltip>
@@ -127,6 +129,18 @@ export default function Dashboard() {
             ))}
           </Table.Tbody>
         </Table>
+      )}
+
+      {/* Modal simple de confirmación */}
+      <Divider my="md" style={{ opacity: 0 }} />
+      {confirmFor && (
+        <Paper withBorder radius="md" p="md" style={{ position: 'fixed', right: 24, bottom: 24, background: 'white' }}>
+          <Text mb="sm">¿Eliminar este documento?</Text>
+          <Group justify="end">
+            <Button variant="default" onClick={() => setConfirmFor(null)}>Cancelar</Button>
+            <Button color="red" onClick={confirmarEliminar}>Eliminar</Button>
+          </Group>
+        </Paper>
       )}
     </Paper>
   );
